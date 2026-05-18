@@ -3,10 +3,12 @@
 import logging
 import os
 import hashlib
+import base64
 import xml.etree.ElementTree as ET
 from typing import Optional
 from fastapi import Response
 import httpx
+from Crypto.Cipher import AES
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +17,12 @@ class WeChatClient:
     """企业微信 API 客户端"""
     
     def __init__(self):
-        self.corp_id = os.getenv("WECHAT_CORP_ID")
-        self.agent_id = os.getenv("WECHAT_AGENT_ID")
-        self.secret = os.getenv("WECHAT_SECRET")
-        self.token = os.getenv("WECHAT_TOKEN")
-        self.encoding_aes_key = os.getenv("WECHAT_ENCODING_AES_KEY")
+        # 支持 WECHAT_* 和 WECOM_CALLBACK_* 两种变量名
+        self.corp_id = os.getenv("WECHAT_CORP_ID") or os.getenv("WECOM_CALLBACK_CORP_ID")
+        self.agent_id = os.getenv("WECHAT_AGENT_ID") or os.getenv("WECOM_CALLBACK_AGENT_ID")
+        self.secret = os.getenv("WECHAT_SECRET") or os.getenv("WECOM_CALLBACK_CORP_SECRET")
+        self.token = os.getenv("WECHAT_TOKEN") or os.getenv("WECOM_CALLBACK_TOKEN")
+        self.encoding_aes_key = os.getenv("WECHAT_ENCODING_AES_KEY") or os.getenv("WECOM_CALLBACK_ENCODING_AES_KEY")
         
         self._access_token: Optional[str] = None
     
@@ -52,25 +55,54 @@ class WeChatClient:
         """验证回调 URL
         
         企业微信会发送 GET 请求验证 URL
+        明文模式: GET 参数 signature, timestamp, nonce, echostr
+        加密模式: GET 参数 msg_signature, timestamp, nonce, echostr (加密)
         """
         
-        signature = params.get("msg_signature")
+        # 获取参数
+        signature = params.get("signature")
+        msg_signature = params.get("msg_signature")
         timestamp = params.get("timestamp")
         nonce = params.get("nonce")
         echostr = params.get("echostr")
         
-        # 验证签名
-        if not self._verify_signature(signature, timestamp, nonce):
-            logger.warning("Callback verification failed: invalid signature")
-            return Response(content="invalid", media_type="text/plain")
+        logger.info(f"Callback verification params: signature={signature}, msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}")
         
-        # 解密 echostr 并返回
-        # 简化实现：直接返回 echostr（实际需要解密）
-        logger.info("Callback URL verified")
-        return Response(content=echostr, media_type="text/plain")
+        # 判断是明文模式还是加密模式
+        if signature and not msg_signature:
+            # 明文模式
+            if not self._verify_signature(signature, timestamp, nonce):
+                logger.warning(f"明文模式签名验证失败")
+                return Response(content="invalid", media_type="text/plain")
+            logger.info("明文模式验证成功")
+            return Response(content=echostr, media_type="text/plain")
+        
+        # 加密模式
+        if msg_signature:
+            if not self.encoding_aes_key:
+                logger.warning("加密模式需要 EncodingAESKey")
+                return Response(content="invalid", media_type="text/plain")
+            
+            # 验证加密签名
+            if not self._verify_msg_signature(msg_signature, timestamp, nonce, echostr):
+                logger.warning(f"加密模式签名验证失败")
+                return Response(content="invalid", media_type="text/plain")
+            
+            # 解密 echostr
+            try:
+                decrypted_echostr = self._decrypt_echostr(echostr)
+                logger.info(f"加密模式验证成功，解密后: {decrypted_echostr[:20]}...")
+                return Response(content=decrypted_echostr, media_type="text/plain")
+            except Exception as e:
+                logger.error(f"解密 echostr 失败: {e}")
+                return Response(content="invalid", media_type="text/plain")
+        
+        # 没有任何签名参数
+        logger.warning("缺少签名参数")
+        return Response(content="invalid", media_type="text/plain")
     
     def _verify_signature(self, signature: str, timestamp: str, nonce: str) -> bool:
-        """验证签名"""
+        """验证明文模式签名"""
         if not all([signature, timestamp, nonce, self.token]):
             return False
         
@@ -83,6 +115,42 @@ class WeChatClient:
         calculated = hashlib.sha1(joined.encode()).hexdigest()
         
         return calculated == signature
+    
+    def _verify_msg_signature(self, msg_signature: str, timestamp: str, nonce: str, echostr: str) -> bool:
+        """验证加密模式签名"""
+        if not all([msg_signature, timestamp, nonce, self.token, echostr]):
+            return False
+        
+        # 加密模式签名算法: sha1(token + timestamp + nonce + echostr)
+        items = [self.token, timestamp, nonce, echostr]
+        items.sort()
+        joined = "".join(items)
+        
+        calculated = hashlib.sha1(joined.encode()).hexdigest()
+        return calculated == msg_signature
+    
+    def _decrypt_echostr(self, echostr: str) -> str:
+        """解密 echostr
+        
+        企微加密格式: Base64(AES(随机16字节 + msg_len(4字节) + msg + $CorpID))
+        """
+        # Base64 解码
+        encrypted = base64.b64decode(echostr)
+        
+        # AES 解密
+        aes_key = base64.b64decode(self.encoding_aes_key + "=")
+        cipher = AES.new(aes_key, AES.MODE_CBC, encrypted[:16])
+        decrypted = cipher.decrypt(encrypted[16:])
+        
+        # 去除 PKCS7 填充
+        pad_len = decrypted[-1]
+        decrypted = decrypted[:-pad_len]
+        
+        # 去除随机16字节 + msg_len(4字节)
+        msg_len = int.from_bytes(decrypted[16:20], 'big')
+        msg = decrypted[20:20+msg_len].decode('utf-8')
+        
+        return msg
     
     async def parse_message(self, body: bytes, params: dict) -> Optional[dict]:
         """解析消息"""

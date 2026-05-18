@@ -1,19 +1,39 @@
 # 本地开发指南
 
-> 本地化部署，无需企业微信、无需管理员权限
+> 本地化部署 + 企业微信集成 + 金蝶 ERP 集成
 
-> ⚠️ **安全警告：当前版本为 MVP 阶段，生产环境不可部署。详见 [安全警告](#安全警告) 章节。**
+> ⚠️ **安全警告：当前版本为 MVP 阶段，生产环境需额外加固。详见 [安全警告](#安全警告) 章节。**
 
 ---
 
 ## 架构说明
 
-本项目采用**本地化方案**，核心组件：
+本项目支持两种使用场景：
+
+### 场景一：企业微信 + 金蝶 ERP 集成
+
+| 组件 | 端口 | 说明 |
+|------|------|------|
+| Hermes Bridge | 8000 | Agent 调度 API |
+| WeChat Gateway | 8001 | 企微消息接收 |
+| MCP Server | 8080 | 金蝶 ERP 工具服务 |
+| Hermes Agent | 8645 | LLM Agent 核心（内部调用） |
+| Prometheus | 9090 | 监控面板 |
+
+**数据流**：
+```
+企微消息 → WeChat Gateway (8001) → Hermes Bridge (8000) → MCP Server (8080) → 金蝶 ERP API
+                                                                          │
+                                                                          ▼
+企微用户 ← 消息回复 ←────────────────────────────────────────────────── 业务结果
+```
+
+### 场景二：本地文件处理
 
 | 组件 | 端口 | 说明 |
 |------|------|------|
 | **Web UI** | **8501** | Streamlit 前端界面（推荐） |
-| Hermes Bridge | 8646 | 任务提交 API，与 Hermes Agent 通信 |
+| Hermes Bridge | 8646 | 任务提交 API |
 | Hermes Agent | 8645 | LLM Agent 核心（内部调用） |
 | Prometheus | 9090 | 监控面板 |
 
@@ -48,13 +68,9 @@ Hermes Agent → stdout/stderr → Bridge 解析 → SSE 流式响应 → Web UI
 cp .env.example .env
 ```
 
-**本地开发只需配置**：
+**必填配置**：
 
 ```env
-# MinIO（必填，自定义密码，8位以上）
-MINIO_ROOT_USER=admin
-MINIO_ROOT_PASSWORD=your-password-here
-
 # LLM API（必填，三选一）
 
 # 方式 1: OpenRouter（推荐，200+ 模型可选）
@@ -75,8 +91,29 @@ OPENROUTER_API_KEY=sk-or-xxx
 # KIMI_API_KEY=xxx
 ```
 
-**无需配置**（已废弃企微集成）：
-- ~~`WECOM_CALLBACK_*` 系列~~
+**金蝶 ERP 配置（可选，用于 ERP 集成）**：
+
+```env
+# 金蝶云 ERP（账号密码登录）
+KINGDEE_API_URL=http://your-kingdee-server/K3Cloud
+KINGDEE_ACCT_ID=your_acct_id
+KINGDEE_USERNAME=your_username
+KINGDEE_PASSWORD=your_password
+KINGDEE_LCID=2052
+```
+
+**企业微信配置（可选，用于企微 Bot）**：
+
+```env
+# 企业微信 Bot
+WECHAT_CORP_ID=your_corp_id
+WECHAT_AGENT_ID=your_agent_id
+WECHAT_SECRET=your_secret
+WECHAT_TOKEN=your_token
+WECHAT_ENCODING_AES_KEY=your_aes_key
+```
+
+> 详细配置步骤请参考 [企业微信配置指南](./wecom_setup_guide.md)
 
 ---
 
@@ -100,11 +137,15 @@ docker compose logs -f hermes-agent
 
 ```bash
 # 健康检查
-curl http://localhost:8646/health   # Hermes Bridge
-curl http://localhost:8501/_stcore/health  # Web UI
+curl -s http://localhost:8000/health      # Hermes Bridge
+curl -s http://localhost:8001/health      # WeChat Gateway
+curl -s http://localhost:8080/metrics     # MCP Server
+curl -s http://localhost:8501/_stcore/health  # Web UI
 
 # 预期响应
 # {"status":"healthy","service":"hermes-bridge","hermes_available":true}
+# {"status":"ok"}
+# # Prometheus 指标输出
 # ok
 ```
 
@@ -313,6 +354,10 @@ docker exec hermes-agent /opt/hermes/.venv/bin/hermes --help
 ## 相关文档
 
 - [README.md](../README.md) - 项目总览
+- [部署指南](./ops/deployment-guide.md) - 生产环境部署
+- [故障排除指南](./ops/troubleshooting-guide.md) - 常见问题
+- [企业微信配置](./wecom_setup_guide.md) - 企微 Bot 配置
+- [Skills 使用说明](../config/skills/README.md) - 技能模板定义
 - [API 文档](http://localhost:8646/docs) - Swagger UI
 - [评审报告](./workitems/规划评审分析/) - 双视角评审分析
 

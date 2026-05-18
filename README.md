@@ -1,14 +1,25 @@
 # Hermes Assistant
 
-> 基于 Hermes Agent 的本地化文件自动化助手
+> 基于 Hermes Agent 的企业级智能助手
 
 ## 项目简介
 
-利用 Hermes Agent 的自主代理能力，为文职人员提供智能文件处理助手。用户通过 **Web UI** 或 API 上传文件并发送自然语言指令，系统自动完成数据清洗、汇总、分析或内容提取，并返回处理后的结果文件。也支持**不上传文件直接对话**，向 Agent 提问获取帮助。
+利用 Hermes Agent 的自主代理能力，为企业提供智能化工作助手。支持两种使用场景：
+
+### 场景一：企业微信 Bot + 金蝶 ERP 集成
+
+用户在企业微信中向 Bot 发送自然语言指令，系统自动调用金蝶云 ERP API 完成业务操作。
+
+**典型用例**：
+- 查询物料库存："查询物料 M001 的库存"
+- 创建销售订单："给客户 C001 创建销售订单，产品 P001，数量 100"
+- 查询客户信息："查询客户 C001 的基本信息"
+
+### 场景二：本地文件处理
+
+用户通过 **Web UI** 或 API 上传文件并发送自然语言指令，系统自动完成数据清洗、汇总、分析或内容提取。
 
 **支持文件格式**: Excel (.xlsx/.xls)、Word (.docx/.doc)、PPT (.pptx/.ppt)、PDF、CSV、JSON、TXT、图片等
-
-**当前方案：本地化部署** — 无需企业微信、无需管理员权限，所有操作在本地完成。
 
 ### 核心价值
 
@@ -30,6 +41,7 @@
 | **Phase 1: PoC 验证** | ✅ 完成 | 技术可行性验证 |
 | **Phase 2: 产品化 MVP** | ✅ 完成 | Web UI + 安全加固 + 本地存储 |
 | **Phase 3: 功能增强** | ✅ 完成 | 批量处理 + 模板系统 + 结果预览 |
+| **Phase 4: 生产就绪** | ✅ 完成 | 企微集成 + 金蝶 ERP + 运维体系 |
 
 ### Phase 2 完成内容
 
@@ -51,6 +63,18 @@
 - ✅ **结果预览**: Excel/CSV 表格预览、图片预览、文本预览
 - ✅ **批量结果打包**: ZIP 格式一键下载所有处理结果
 
+### Phase 4 完成内容
+
+- ✅ **企业微信集成**: WeChat Gateway 消息接收入口
+- ✅ **金蝶 ERP 集成**: MCP Server 封装金蝶云 API
+- ✅ **Skills 模板系统**: 可复用的业务技能模板（查询物料、创建订单等）
+- ✅ **缓存机制**: LRU 缓存 + TTL 过期，提升查询性能
+- ✅ **连接池管理**: 连接复用 + 健康检查
+- ✅ **审计日志**: 完整操作审计追踪
+- ✅ **运维体系**: 部署指南 + 故障排除 + 监控告警
+- ✅ **多租户设计**: 租户隔离架构设计
+- ✅ **高可用设计**: 主备部署 + 故障转移方案
+
 ### 路线选择
 
 > **决策日期**: 2026-05-15
@@ -66,6 +90,29 @@
 ---
 
 ## 架构概览
+
+### 企业微信 + 金蝶 ERP 集成架构
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  企业微信        │────▶│  WeChat Gateway   │────▶│  Hermes Bridge   │
+│  (用户消息)      │     │  (消息转换)       │     │  (Agent 调度)    │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                                                          │
+                                                          ▼
+                                                ┌─────────────────┐
+                                                │  MCP Server      │
+                                                │  (ERP 工具)       │
+                                                └─────────────────┘
+                                                          │
+                                                          ▼
+                                                ┌─────────────────┐
+                                                │  金蝶云 ERP      │
+                                                │  (业务系统)      │
+                                                └─────────────────┘
+```
+
+### 本地文件处理架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -107,6 +154,17 @@
 ```
 
 ### 数据流
+
+**企业微信 + 金蝶 ERP 场景**：
+
+```
+企微消息 → WeChat Gateway (8001) → Hermes Bridge (8000) → MCP Server (8080) → 金蝶 ERP API
+                                                                          │
+                                                                          ▼
+企微用户 ← 消息回复 ←────────────────────────────────────────────────── 业务结果
+```
+
+**本地文件处理场景**：
 
 ```
 用户 → Web UI (8501) → Hermes Bridge (8646) → docker exec → Hermes Agent
@@ -156,6 +214,8 @@ data/sessions/
 
 - Docker & Docker Compose
 - LLM API Key（OpenRouter / OpenAI / 自定义兼容端点）
+- 金蝶云 ERP 账号（用于 ERP 集成）
+- 企业微信管理员权限（用于 Bot 配置，可选）
 
 ### 1. 克隆项目
 
@@ -168,14 +228,15 @@ cd Hermes_Work_Assistant
 
 ```bash
 cp .env.example .env
-# 编辑 .env，配置 LLM API
+# 编辑 .env，配置必要参数
+vim .env
 ```
 
-必填配置：
+#### 必填配置
+
+**LLM API（三选一）**：
 
 ```env
-# LLM API（三选一）
-
 # 方式 1: OpenRouter
 HERMES_PROVIDER=openrouter
 HERMES_MODEL=anthropic/claude-3-sonnet
@@ -191,6 +252,28 @@ OPENROUTER_API_KEY=sk-or-xxx
 # DEEPSEEK_API_KEY / GLM_API_KEY / KIMI_API_KEY 等
 ```
 
+**金蝶 ERP 配置**：
+
+```env
+# 金蝶云 ERP（账号密码登录）
+KINGDEE_API_URL=http://your-kingdee-server/K3Cloud
+KINGDEE_ACCT_ID=your_acct_id
+KINGDEE_USERNAME=your_username
+KINGDEE_PASSWORD=your_password
+KINGDEE_LCID=2052
+```
+
+**企业微信配置（可选）**：
+
+```env
+# 企业微信 Bot
+WECHAT_CORP_ID=your_corp_id
+WECHAT_AGENT_ID=your_agent_id
+WECHAT_SECRET=your_secret
+WECHAT_TOKEN=your_token
+WECHAT_ENCODING_AES_KEY=your_aes_key
+```
+
 ### 3. 启动服务
 
 ```bash
@@ -201,11 +284,48 @@ docker compose up -d
 docker compose ps
 ```
 
-### 4. 访问 Web UI
+### 4. 验证服务
+
+```bash
+# 健康检查
+curl -s http://localhost:8000/health      # Hermes Bridge
+curl -s http://localhost:8001/health      # WeChat Gateway
+curl -s http://localhost:8080/metrics     # MCP Server
+curl -s http://localhost:8501/_stcore/health  # Web UI
+```
+
+### 5. 企业微信 Bot 配置（可选）
+
+在企业微信管理后台：
+
+1. **创建应用**：应用管理 → 自建应用 → 创建
+2. **获取凭证**：记录 `AgentId` 和 `Secret`
+3. **设置回调**：
+   - 回调 URL：`https://your-domain/wechat/callback`
+   - 设置 `Token` 和 `EncodingAESKey`
+4. **配置可信域名**：添加你的服务器域名
+
+### 6. 使用方式
+
+#### 方式一：企业微信 Bot（推荐）
+
+在企业微信中向 Bot 发送自然语言指令：
+
+```
+查询物料 M001 的库存
+```
+
+```
+给客户 C001 创建销售订单，产品 P001，数量 100
+```
+
+```
+查询客户 C001 的基本信息
+```
+
+#### 方式二：Web UI
 
 打开浏览器访问: **http://localhost:8501**
-
-### 5. 使用 Web UI
 
 **两种使用模式**：
 
@@ -276,9 +396,10 @@ curl -X POST http://localhost:8646/api/task/excel \
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| **Web UI** | **8501** | Streamlit 前端界面（推荐） |
-| Hermes Bridge | 8646 | 任务提交 API |
-| Hermes Agent | 8645 | Agent 服务（内部） |
+| **Web UI** | **8501** | Streamlit 前端界面 |
+| Hermes Bridge | 8000 | Agent 调度 API |
+| WeChat Gateway | 8001 | 企微消息接收 |
+| MCP Server | 8080 | 金蝶 ERP 工具服务 |
 | Prometheus | 9090 | 监控面板 |
 
 ---
@@ -293,9 +414,12 @@ Hermes_Work_Assistant/
 ├── config/
 │   ├── hermes-config.yaml      # Hermes 配置
 │   ├── USER.md                 # Agent 角色设定
+│   ├── mcp_servers.yaml        # MCP Server 配置
 │   └── skills/                 # 技能定义
+│       ├── README.md           # Skills 使用说明
+│       └── erp_operations.yaml # ERP 操作技能模板
 ├── services/
-│   ├── web-ui/                 # Streamlit Web UI (Phase 2)
+│   ├── web-ui/                 # Streamlit Web UI
 │   │   ├── Dockerfile
 │   │   ├── app.py              # 主入口
 │   │   ├── components/
@@ -305,14 +429,30 @@ Hermes_Work_Assistant/
 │   │   │   ├── config.py       # LLM 配置
 │   │   │   └── history.py      # 历史记录
 │   │   └── requirements.txt
-│   ├── hermes-bridge/          # 本地桥接服务
+│   ├── hermes-bridge/          # Agent 桥接服务
 │   │   ├── Dockerfile
 │   │   ├── app/
 │   │   │   ├── main.py
 │   │   │   ├── routers/task.py
 │   │   │   └── services/hermes_client.py
 │   │   └── requirements.txt
-│   └── session_manager/       # 会话管理模块 (Phase 2)
+│   ├── wechat-gateway/         # 企业微信网关 (Phase 4)
+│   │   ├── Dockerfile
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   └── routers/callback.py
+│   │   └── requirements.txt
+│   ├── kingdee-mcp-server/     # 金蝶 MCP Server (Phase 4)
+│   │   ├── Dockerfile
+│   │   ├── src/kingdee_mcp_server/
+│   │   │   ├── server.py       # MCP 服务入口
+│   │   │   ├── kingdee_client.py # 金蝶 API 客户端
+│   │   │   ├── skills.py       # Skills 注册执行
+│   │   │   ├── cache.py         # LRU 缓存
+│   │   │   └── audit_logger.py  # 审计日志
+│   │   ├── tests/              # 单元测试
+│   │   └── pyproject.toml
+│   └── session_manager/       # 会话管理模块
 │       ├── manager.py          # 会话创建/删除
 │       ├── validators.py       # 路径/命令验证
 │       ├── storage.py          # 文件存储
@@ -324,15 +464,20 @@ Hermes_Work_Assistant/
 │   │   └── test_validators.py
 │   └── test_storage_chain.py   # 存储链路测试
 ├── data/
-│   └── sessions/               # 会话数据目录
-│       └── sess_xxx/
-│           ├── workspace.db
-│           ├── uploads/
-│           └── outputs/
+│   ├── sessions/               # 会话数据目录
+│   │   └── sess_xxx/
+│   │       ├── workspace.db
+│   │       ├── uploads/
+│   │       └── outputs/
+│   └── audit/                  # 审计日志目录
+│       └── audit-*.jsonl
 ├── nginx/                      # 反向代理配置
 ├── prometheus/                 # 监控配置
 └── docs/
     ├── LOCAL_DEV_GUIDE.md      # 本地开发指南
+    ├── ops/                    # 运维文档 (Phase 4)
+    │   ├── deployment-guide.md
+    │   └── troubleshooting-guide.md
     ├── design/                 # 设计文档
     ├── plan/                   # 规划文档
     └── tasks/                  # 任务清单
@@ -438,11 +583,20 @@ python tests/test_storage_chain.py
 | 文档 | 说明 |
 |------|------|
 | [本地开发指南](./docs/LOCAL_DEV_GUIDE.md) | 快速启动、API 使用、故障排除 |
+| [部署指南](./docs/ops/deployment-guide.md) | 生产环境部署步骤 |
+| [故障排除指南](./docs/ops/troubleshooting-guide.md) | 常见问题与解决方案 |
+| [企业微信配置](./docs/wecom_setup_guide.md) | 企微 Bot 配置步骤 |
 | [会话隔离设计](./docs/design/session-isolation.md) | 架构设计文档 |
+| [Skills 使用说明](./config/skills/README.md) | 技能模板定义与使用 |
 | [总体规划](./docs/plan/Hermes_WeCom_Excel_Assistant_MVP.md) | MVP 规划方案 |
+| [ERP 架构规划](./docs/plan/Hermes_ERP_Architecture_Plan.md) | 金蝶 ERP 集成架构 |
 | [Phase 1 任务](./docs/tasks/phase1/) | PoC 阶段任务清单 |
 | [Phase 2 任务](./docs/tasks/phase2/) | 产品化阶段任务清单 |
 | [Phase 3 规划](./docs/workitems/Phase3规划/) | 功能增强阶段规划与任务清单 |
+| [Phase 4 任务](./docs/tasks/phase4/) | 生产就绪阶段任务清单 |
+| [多租户设计](./docs/tasks/phase4/multi_tenant_design.md) | 多租户隔离架构设计 |
+| [高可用设计](./docs/tasks/phase4/high_availability_design.md) | 主备部署与故障转移 |
+| [部署检查清单](./docs/tasks/phase4/deployment_checklist.md) | 生产部署验收清单 |
 | [Phase 3 代码评审](./docs/workitems/Phase3规划/code-review-report.md) | 五轴代码评审报告 |
 | [评审报告](./docs/workitems/规划评审分析/) | 双视角评审分析 |
 

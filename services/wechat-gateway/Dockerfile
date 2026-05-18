@@ -3,12 +3,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Copy source code first
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy source code
 COPY src/ src/
+
+# Install dependencies
+RUN pip install --no-cache-dir .
 
 # Environment
 ENV PYTHONUNBUFFERED=1

@@ -26,17 +26,82 @@ Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ## 2. 配置回调 URL
 
-### 2.1 设置回调域名
+### 2.1 个人测试方案（内网穿透）
+
+> ⚠️ **注意**：此方案仅适用于个人开发测试，生产环境请使用正式域名和公网服务器。
+
+如果你没有公网服务器和域名，可以使用内网穿透工具将本地服务暴露到公网。
+
+#### 使用 ngrok
+
+```bash
+# 1. 安装 ngrok
+brew install ngrok
+
+# 2. 启动 Hermes 服务
+docker compose up -d
+
+# 3. 穿透 WeChat Gateway 端口（8001）
+ngrok http 8001
+
+# 4. 获得公网地址（类似）
+# Session Status                online
+# Forwarding                    https://a1b2c3d4.ngrok-free.app -> http://localhost:8001
+```
+
+#### 填写回调 URL
+
+将 ngrok 提供的地址填写到企微后台：
+
+```
+https://a1b2c3d4.ngrok-free.app/wechat/callback
+```
+
+#### ngrok 注意事项
+
+| 项目 | 说明 |
+|------|------|
+| URL 变化 | 免费版每次重启 ngrok 会生成新 URL，需重新配置企微回调 |
+| 速率限制 | 免费版有连接数和速率限制 |
+| HTTPS | ngrok 自动提供 HTTPS，无需额外配置证书 |
+| 稳定性 | 长时间运行可能断开，建议配合 `--session` 参数 |
+
+#### 其他穿透工具
+
+| 工具 | 特点 | 地址 |
+|------|------|------|
+| ngrok | 免费、稳定、易用 | ngrok.com |
+| frp | 自建服务器、开源、无限制 | github.com/fatedier/frp |
+| cloudflare tunnel | 免费、无需注册、稳定 | developers.cloudflare.com |
+| cpolar | 国内服务、速度快 | cpolar.com |
+
+#### 使用企微调试工具（推荐测试用）
+
+如果穿透工具不稳定，可以使用企微官方调试工具：
+
+1. 访问：https://open.work.weixin.qq.com/wwopen/devTool
+2. 使用「接口调试工具」模拟消息发送和回调验证
+3. 无需公网服务器，可验证消息加解密逻辑
+
+**优点**：
+- 无需公网服务器
+- 无需配置回调 URL
+- 可快速验证消息处理逻辑
+
+**限制**：
+- 仅用于开发调试
+- 无法测试完整端到端流程
+
+### 2.2 生产环境配置回调域名
 
 在应用详情页 → 「企业可信IP」中添加服务器 IP。
 
-### 2.2 配置接收消息
+### 2.3 配置接收消息
 
-1. 进入「接收消息」→「设置 API 接收」
+1. 进入「接收消息」→ 「设置 API 接收」
 2. 填写回调 URL：
-   ```
-   https://your-domain.com/wecom/callback
-   ```
+   - **生产环境**：`https://your-domain.com/wechat/callback`
+   - **个人测试**：使用 ngrok 地址 + `/wechat/callback`
 3. 设置 Token 和 EncodingAESKey（随机生成）
 4. 记录以下信息：
    ```
@@ -44,9 +109,12 @@ Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    EncodingAESKey: your-43-char-encoding-aes-key
    ```
 
-### 2.3 验证回调
+### 2.4 验证回调
 
 点击保存时，企业微信会发送 GET 请求验证 URL 有效性。
+
+- **生产环境**：确保域名解析正确、HTTPS 证书有效
+- **个人测试**：确保 ngrok 正在运行、WeChat Gateway 服务已启动
 
 ## 3. 配置企业 ID
 
@@ -61,14 +129,15 @@ CorpID: wwxxxxxxxxxxxxxxxx
 将以上信息填入 `.env` 文件：
 
 ```bash
-# 企业微信回调配置
-WECOM_CALLBACK_CORP_ID=wwxxxxxxxxxxxxxxxx
-WECOM_CALLBACK_CORP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-WECOM_CALLBACK_AGENT_ID=1000002
-WECOM_CALLBACK_TOKEN=your-token
-WECOM_CALLBACK_ENCODING_AES_KEY=your-43-char-encoding-aes-key
-WECOM_CALLBACK_ALLOWED_USERS=user1,user2
+# 企业微信 Bot 配置
+WECHAT_CORP_ID=wwxxxxxxxxxxxxxxxx
+WECHAT_AGENT_ID=1000002
+WECHAT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+WECHAT_TOKEN=your-token
+WECHAT_ENCODING_AES_KEY=your-43-char-encoding-aes-key
 ```
+
+> **说明**：只需要配置自建应用的 Secret，无需「通讯录同步 Secret」。未认证企业也可正常使用 Bot 功能。
 
 ## 5. H5 应用配置（可选）
 
@@ -134,4 +203,4 @@ docker compose logs -f hermes
 3. 网络连接是否正常
 
 ## 版本
-v1.0.0
+v1.1.0 - 新增个人测试方案（内网穿透）
