@@ -1,0 +1,1 @@
+"""Tests package for kingdee-mcp-server."""
