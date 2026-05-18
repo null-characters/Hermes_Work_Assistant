@@ -151,3 +151,49 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Kingdee MCP Server - ERP 集成 (Phase 4)
+  kingdee-mcp-server:
+    build:
+      context: ./services/kingdee-mcp-server
+      dockerfile: Dockerfile
+    container_name: hermes-mcp-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./config/mcp_servers.yaml:/app/config/mcp_servers.yaml:ro
+    env_file:
+      - .env
+    environment:
+      - AUDIT_LOG_DIR=/app/data/audit
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # WeChat Gateway - 企业微信网关 (Phase 4)
+  wechat-gateway:
+    build:
+      context: ./services/wechat-gateway
+      dockerfile: Dockerfile
+    container_name: hermes-wechat-gateway
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - HERMES_AGENT_URL=http://hermes-bridge:8000
+      - PORT=8001
+    depends_on:
+      - hermes-bridge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
