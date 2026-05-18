@@ -7,7 +7,9 @@ import re
 from pathlib import Path
 
 # 添加 hermes-bridge 路径
-sys.path.insert(0, str(Path(__file__).parent.parent / "services" / "hermes-bridge"))
+_hermes_path = Path(__file__).parent.parent / "services" / "hermes-bridge"
+if str(_hermes_path) not in sys.path:
+    sys.path.insert(0, str(_hermes_path))
 
 from app.services.hermes_client import HermesClient
 
