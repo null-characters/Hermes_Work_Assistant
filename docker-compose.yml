@@ -210,6 +210,9 @@ services:
       - .env
     environment:
       - PORT=8002
+      - HERMES_AGENT_URL=http://hermes-bridge:8000
+    depends_on:
+      - hermes-bridge
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
