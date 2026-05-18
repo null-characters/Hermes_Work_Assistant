@@ -94,6 +94,8 @@ def init_session_state():
     if "session_id" not in st.session_state:
         st.session_state["session_id"] = create_session()
         st.session_state["task_history"] = []
+        st.session_state["hermes_session_id"] = None  # Hermes 内部会话 ID，用于恢复对话
+        st.session_state["conversation_history"] = []  # 对话历史记录
         st.session_state["config"] = {
             "api_key": os.getenv("OPENAI_API_KEY", ""),
             "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
@@ -151,12 +153,15 @@ def show_sidebar():
             if st.button("🔄 新建会话"):
                 st.session_state.session_id = create_session()
                 st.session_state.task_history = []
+                st.session_state.hermes_session_id = None  # 清空 Hermes 会话 ID
+                st.session_state.conversation_history = []  # 清空对话历史
                 st.rerun()
         
         with col2:
-            if st.button("🗑️ 清空会话"):
-                st.session_state.session_id = create_session()
+            if st.button("🗑️ 清空对话"):
                 st.session_state.task_history = []
+                st.session_state.hermes_session_id = None  # 清空 Hermes 会话 ID
+                st.session_state.conversation_history = []  # 清空对话历史
                 st.rerun()
         
         st.divider()
@@ -177,12 +182,30 @@ def show_sidebar():
             """)
 
 
+def escape_html(text: str) -> str:
+    """转义 HTML 特殊字符，防止 XSS 和渲染错误"""
+    if not text:
+        return ""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def show_main_content():
     """显示主内容区"""
     st.title("📊 智能文件助手")
     st.markdown("使用自然语言处理各种文件，无需编程知识")
     
     st.caption(f"当前会话: `{st.session_state.session_id}`")
+    
+    # 显示对话历史
+    if st.session_state.get("conversation_history"):
+        st.divider()
+        st.header("💬 对话历史")
+        for msg in st.session_state.conversation_history[-10:]:  # 显示最近10条对话
+            if msg["role"] == "user":
+                st.markdown(f"**👤 你:** {escape_html(msg['content'])}")
+            else:
+                st.markdown(f"**🤖 Agent:** {escape_html(msg['content'][:500])}...")
+        st.caption(f"共 {len(st.session_state.conversation_history)} 条对话记录")
     
     st.divider()
     
@@ -313,6 +336,8 @@ def show_main_content():
             
             def add_log(line: str, line_type: str = ""):
                 """添加日志行"""
+                # 转义 HTML 特殊字符
+                line = escape_html(line)
                 elapsed = time.time() - start_time
                 timestamp = f"[{elapsed:.1f}s]"
                 if line_type == "progress":
@@ -352,12 +377,14 @@ def show_main_content():
             final_error = ""
             task_success = False
             last_error = ""
+            hermes_sid = st.session_state.get("hermes_session_id")  # 获取之前保存的 Hermes 会话 ID
             
             for event in task_runner.run_task_stream(
                 session_id=st.session_state.session_id,
                 uploaded_file=uploaded_file,
                 instruction=instruction,
-                data_path=DATA_PATH
+                data_path=DATA_PATH,
+                hermes_session_id=hermes_sid  # 传递 Hermes 会话 ID 以恢复对话
             ):
                 event_type = event.get("type", "")
                 content = event.get("content", "")
@@ -417,6 +444,10 @@ def show_main_content():
                     add_log(content, "done")
                     task_success = True
                     update_steps(3)
+                    # 保存 Hermes 会话 ID，用于后续恢复对话
+                    new_hermes_sid = event.get("hermes_session_id")
+                    if new_hermes_sid:
+                        st.session_state["hermes_session_id"] = new_hermes_sid
             
             # 记录任务结果
             if not task_success:
@@ -434,11 +465,23 @@ def show_main_content():
                 "result": result
             })
             
+            # 保存对话历史
             st.session_state.task_history.append({
                 "instruction": instruction,
                 "result": result,
                 "file_name": uploaded_file.name if uploaded_file else None
             })
+            
+            # 保存对话到 conversation_history
+            st.session_state.conversation_history.append({
+                "role": "user",
+                "content": instruction
+            })
+            if final_output:
+                st.session_state.conversation_history.append({
+                    "role": "assistant",
+                    "content": final_output
+                })
             
             # 显示当前任务结果
             st.divider()
@@ -448,7 +491,7 @@ def show_main_content():
                 st.caption(f"⏱️ 总耗时: {elapsed:.1f}s")
                 if result.get("output"):
                     st.markdown("#### 🤖 Agent 响应")
-                    st.markdown(result["output"])
+                    st.markdown(escape_html(result["output"]))
             else:
                 st.error(f"❌ 处理失败: {result.get('error', '未知错误')}")
             
@@ -513,7 +556,7 @@ def show_main_content():
                 st.markdown(f"**文件:** {task['file_name']}")
                 st.markdown(f"**状态:** {'✅ 成功' if task['result']['success'] else '❌ 失败'}")
                 if task['result'].get('output'):
-                    st.code(task['result']['output'][:1000], language="text")
+                    st.code(escape_html(task['result']['output'][:1000]), language="text")
 
 
 def main():

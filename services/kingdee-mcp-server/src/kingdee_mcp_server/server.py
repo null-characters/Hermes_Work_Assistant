@@ -40,24 +40,51 @@ def query_erp_data(
     2. Get the correct FNumber/FId to prevent hallucination
 
     Args:
-        form_id: Form identifier (e.g., BD_MATERIAL, BD_CUSTOMER, BD_STOCK)
-        filter_string: Filter condition (e.g., "FNumber like '%M001%'")
-        field_keys: Comma-separated fields (e.g., "FNumber,FName,FId")
+        form_id: Form identifier. Common values:
+            - BD_MATERIAL: 物料基础资料
+            - BD_CUSTOMER: 客户基础资料
+            - BD_STOCK: 仓库基础资料
+            - BD_SUPPLIER: 供应商基础资料
+        filter_string: SQL-like filter. Examples:
+            - "FNumber like '%KM%'" - 编号包含 KM
+            - "FName like '%电机%'" - 名称包含电机
+            - "FNumber = 'M001'" - 编号等于 M001
+        field_keys: Comma-separated fields. For BD_MATERIAL use:
+            "FNumber,FName,FMaterialId,FSpecification"
         limit: Max records (default 100, max 2000)
-        user_id: User ID for audit logging
-        session_id: Session ID for audit logging
 
     Returns:
         Query results with data array and has_more flag
+
+    Examples:
+        # 查询物料编号包含 "1.LA" 的物料
+        query_erp_data(
+            form_id="BD_MATERIAL",
+            filter_string="FNumber like '%1.LA%'",
+            field_keys="FNumber,FName,FMaterialId"
+        )
+
+        # 查询名称包含 "电机" 的物料
+        query_erp_data(
+            form_id="BD_MATERIAL",
+            filter_string="FName like '%电机%'"
+        )
     """
     audit = get_audit_logger()
     cache = get_query_cache()
     try:
         client = get_client()
         
-        # Default field_keys if not provided
+        # Default field_keys based on form_id
         if not field_keys:
-            field_keys = "FNumber,FName,FId"
+            # 不同表单的主键字段名不同
+            default_fields = {
+                "BD_MATERIAL": "FNumber,FName,FMaterialId",
+                "BD_CUSTOMER": "FNumber,FName,FCustomerId",
+                "BD_STOCK": "FNumber,FName,FStockId",
+                "BD_SUPPLIER": "FNumber,FName,FSupplierId",
+            }
+            field_keys = default_fields.get(form_id, "FNumber,FName,FId")
         
         # Enforce limit cap
         actual_limit = min(limit, 2000)

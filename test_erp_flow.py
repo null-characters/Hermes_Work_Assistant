@@ -58,8 +58,8 @@ async def main():
     print("测试流程: Hermes Agent -> 金蝶 ERP -> 钉钉")
     print("=" * 60)
     
-    # 1. 查询 UM 项目
-    prompt = "查询所有 UM 的项目"
+    # 1. 查询物料（自然语言）
+    prompt = "查询物料编号包含 1.LA 的物料"
     print(f"\n[1] 发送查询请求: {prompt}")
     
     try:

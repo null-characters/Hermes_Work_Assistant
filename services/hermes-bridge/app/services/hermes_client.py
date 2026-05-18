@@ -38,6 +38,7 @@ class HermesResponse:
     message: str
     output: str
     error: Optional[str] = None
+    hermes_session_id: Optional[str] = None  # Hermes 内部会话 ID，用于恢复对话
 
 
 class HermesClient:
@@ -184,9 +185,16 @@ class HermesClient:
     async def execute_task_stream(
         self,
         prompt: str,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        hermes_session_id: Optional[str] = None
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """执行任务（流式模式）- 实时显示 Agent 思考过程"""
+        """执行任务（流式模式）- 实时显示 Agent 思考过程
+        
+        Args:
+            prompt: 发送给 Agent 的提示
+            timeout: 超时时间（秒）
+            hermes_session_id: Hermes 内部会话 ID，用于恢复对话（可选）
+        """
         timeout = timeout or self.TIMEOUT
         
         if not self.is_available():
@@ -198,11 +206,16 @@ class HermesClient:
         safe_prompt = shlex.quote(prompt)
         HERMES_PATH = "/opt/hermes/.venv/bin/hermes"
         
-        # 添加 -v 参数启用详细输出，显示思考过程
+        # 构建命令，支持会话恢复
         cmd = [
             "docker", "exec", self.CONTAINER_NAME,
             HERMES_PATH, "chat", "-q", safe_prompt, "-v"
         ]
+        
+        # 如果有 Hermes 会话 ID，使用 --resume 恢复对话
+        if hermes_session_id:
+            cmd.extend(["--resume", hermes_session_id])
+            logger.info(f"恢复 Hermes 会话: {hermes_session_id}")
         
         logger.info(f"流式执行: docker exec {self.CONTAINER_NAME} hermes chat -q -v ...")
         
@@ -218,6 +231,7 @@ class HermesClient:
         last_heartbeat = 0
         heartbeat_interval = 5
         output_lines = []
+        hermes_sid = None  # 捕获 Hermes 会话 ID
         
         while True:
             try:
@@ -233,6 +247,11 @@ class HermesClient:
                 if item_type == 'output' and content is not None:
                     output_lines.append(content)
                     
+                    # 解析 Hermes 会话 ID（格式: "Session: sess_xxx" 或类似）
+                    sid_match = self._extract_session_id(content)
+                    if sid_match:
+                        hermes_sid = sid_match
+                    
                     # 解析结构化输出
                     parsed = self._parse_hermes_output(content)
                     if parsed:
@@ -247,6 +266,11 @@ class HermesClient:
                             
                 elif item_type == 'stderr' and content is not None:
                     # stderr 包含 INFO/DEBUG 日志，需要解析
+                    # 也可能包含会话 ID
+                    sid_match = self._extract_session_id(content)
+                    if sid_match:
+                        hermes_sid = sid_match
+                    
                     parsed = self._parse_hermes_output(content)
                     if parsed:
                         yield parsed
@@ -298,9 +322,38 @@ class HermesClient:
         return_code = process.poll()
         
         if return_code == 0:
-            yield {"type": "done", "content": "✅ 任务执行完成"}
+            # 返回 Hermes 会话 ID（如果有）
+            if hermes_sid:
+                yield {"type": "done", "content": "✅ 任务执行完成", "hermes_session_id": hermes_sid}
+            else:
+                yield {"type": "done", "content": "✅ 任务执行完成"}
         elif return_code is not None:
             yield {"type": "error", "content": f"❌ 执行失败: Exit code {return_code}"}
+    
+    def _extract_session_id(self, line: str) -> Optional[str]:
+        """从 Hermes 输出中提取会话 ID
+        
+        Hermes 会话 ID 格式通常为：
+        - "Session: sess_xxxx"
+        - "Resume with: --resume sess_xxxx"
+        - 或类似格式
+        """
+        import re
+        
+        # 匹配 "Session: sess_xxxx" 或 "Resume with: --resume sess_xxxx"
+        patterns = [
+            r'Session:\s*(sess_[a-zA-Z0-9]+)',
+            r'--resume\s+(sess_[a-zA-Z0-9]+)',
+            r'Resume with:\s*--resume\s+(sess_[a-zA-Z0-9]+)',
+            r'session_id:\s*(sess_[a-zA-Z0-9]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, line)
+            if match:
+                return match.group(1)
+        
+        return None
     
     def _parse_hermes_output(self, line: str) -> Optional[dict[str, Any]]:
         """
@@ -384,7 +437,27 @@ class HermesClient:
                 not content.startswith('Duration:') and
                 not content.startswith('Messages:') and
                 not re.match(r'^\d{2}:\d{2}:\d{2}', content)):  # 排除时间戳开头的日志
-                return {"type": "response", "content": f"🤖 {content}"}
+                
+                # 区分"最终结论"和"工具调用结果"
+                # 工具调用结果特征：包含 JSON 格式、大量数据、表格格式等
+                is_tool_result = (
+                    # JSON 格式数据
+                    content.startswith('{') or content.startswith('[') or
+                    '"FNumber"' in content or '"FName"' in content or  # 金蝶 ERP 数据
+                    # 表格/列表格式
+                    content.startswith('|') or content.startswith('-') or
+                    # 包含大量数据的特征
+                    '":' in content or '", "' in content or
+                    # MCP 工具返回的数据格式
+                    'Result:' in content or 'total:' in content.lower()
+                )
+                
+                if is_tool_result:
+                    # 工具调用结果，不作为最终响应
+                    return {"type": "tool_result", "content": f"📋 {content[:100]}..."}
+                else:
+                    # 最终结论
+                    return {"type": "response", "content": f"🤖 {content}"}
         
         # API 调用 - "API call #N: model=..."
         elif 'API call' in line and 'model=' in line:
@@ -571,14 +644,19 @@ class HermesClient:
         file_path: Optional[str],
         task: str,
         session_id: str,
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
+        hermes_session_id: Optional[str] = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """处理文件或纯文本任务（流式模式）
 
-    file_path 可选：
-    - 有值：生成包含文件路径和输出目录的结构化 prompt
-    - 无值：直接将 task 作为指令发送给 Agent（直接对话模式）
-    """
+        file_path 可选：
+        - 有值：生成包含文件路径和输出目录的结构化 prompt
+        - 无值：直接将 task 作为指令发送给 Agent（直接对话模式）
+        
+        hermes_session_id 可选：
+        - 有值：恢复之前的 Hermes 会话，实现连续对话
+        - 无值：开始新会话
+        """
         if output_dir is None:
             output_dir = f"/app/data/sessions/{session_id}/outputs"
 
@@ -599,7 +677,7 @@ class HermesClient:
         else:
             prompt = task
 
-        async for event in self.execute_task_stream(prompt):
+        async for event in self.execute_task_stream(prompt, hermes_session_id=hermes_session_id):
             yield event
     
     # 别名，保持向后兼容

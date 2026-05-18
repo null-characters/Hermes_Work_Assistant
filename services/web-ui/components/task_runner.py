@@ -112,7 +112,8 @@ class TaskRunner:
         session_id: str,
         uploaded_file,
         instruction: str,
-        data_path: Path
+        data_path: Path,
+        hermes_session_id: Optional[str] = None
     ) -> Generator[dict, None, None]:
         """
         执行任务（SSE 流式模式）
@@ -120,6 +121,10 @@ class TaskRunner:
         uploaded_file 可选：
         - 有值：保存文件并传递 file_path 给后端
         - 无值：直接对话模式，不传 file_path
+        
+        hermes_session_id 可选：
+        - 有值：恢复之前的 Hermes 会话，实现连续对话
+        - 无值：开始新会话
 
         实时返回 Agent 处理进度，用于前端实时显示。
 
@@ -127,6 +132,7 @@ class TaskRunner:
             dict: 事件消息
                 - type: "progress" | "tool" | "output" | "error" | "done"
                 - content: 具体内容
+                - hermes_session_id: Hermes 内部会话 ID（仅在 done 事件中返回）
         """
         try:
             # 处理文件（如果有）
@@ -142,6 +148,10 @@ class TaskRunner:
                 "task": instruction,
                 "session_id": session_id
             }
+            
+            # 如果有 Hermes 会话 ID，添加到请求中
+            if hermes_session_id:
+                payload["hermes_session_id"] = hermes_session_id
             
             # 使用 SSE 流式请求
             with httpx.Client(timeout=self.timeout) as client:

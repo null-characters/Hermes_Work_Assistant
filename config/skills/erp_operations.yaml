@@ -2,6 +2,33 @@
 # 定义可复用的 ERP 操作技能模板
 
 skills:
+  # 通用物料查询
+  query_material:
+    name: "查询物料"
+    description: "根据物料编码、名称或规格查询物料信息"
+    trigger:
+      patterns:
+        - "查询.*物料"
+        - "物料.*查询"
+        - "查找.*物料"
+        - "搜索.*物料"
+        - "物料.*包含"
+        - "物料.*编号"
+      entities:
+        - keyword  # 搜索关键词
+    
+    steps:
+      - action: "query_erp_data"
+        params:
+          form_id: "BD_MATERIAL"
+          field_keys: "FNumber,FName,FSpecification,FMaterialId"
+          filter_string: "FNumber like '%{keyword}%' or FName like '%{keyword}%'"
+          limit: 20
+    
+    examples:
+      - input: "查询物料编号包含 1.LA 的物料"
+        output: "找到以下物料：\n1.LA.LE.001001 - EXIT应急照明指示灯"
+
   # 查询物料库存
   query_material_stock:
     name: "查询物料库存"

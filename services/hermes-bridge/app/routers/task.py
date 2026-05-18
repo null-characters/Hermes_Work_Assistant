@@ -42,12 +42,17 @@ class ExcelTaskRequest(BaseModel):
     file_path 可选：
     - 有值：处理指定文件，生成结构化 prompt
     - 无值：直接对话模式，task 作为原始指令发送给 Agent
+    
+    hermes_session_id 可选：
+    - 有值：恢复之前的 Hermes 会话，实现连续对话
+    - 无值：开始新会话
     """
     file_path: Optional[str] = Field(None, description="文件在容器内的绝对路径（可选，不传则直接对话）")
     task: str = Field(..., description="处理任务描述或对话内容")
     session_id: str = Field(..., description="会话 ID")
     output_dir: Optional[str] = Field(None, description="输出目录路径")
     timeout: Optional[int] = Field(None, description="超时时间（秒）")
+    hermes_session_id: Optional[str] = Field(None, description="Hermes 内部会话 ID，用于恢复对话（可选）")
 
 
 def get_hermes_client(req: Request) -> HermesClient:
@@ -180,14 +185,20 @@ async def process_excel_stream(
                 file_path=excel_request.file_path,
                 task=excel_request.task,
                 session_id=excel_request.session_id,
-                output_dir=excel_request.output_dir
+                output_dir=excel_request.output_dir,
+                hermes_session_id=excel_request.hermes_session_id
             ):
                 # 格式化为 SSE
                 event_type = event.get("type", "message")
                 content = event.get("content", "")
+                hermes_sid = event.get("hermes_session_id")  # 获取 Hermes 会话 ID
                 
                 # SSE 格式: data: {json}\n\n
-                yield f"data: {json.dumps({'type': event_type, 'content': content})}\n\n"
+                event_data = {'type': event_type, 'content': content}
+                if hermes_sid:
+                    event_data['hermes_session_id'] = hermes_sid
+                
+                yield f"data: {json.dumps(event_data)}\n\n"
                 
         except Exception as e:
             logger.error(f"SSE 流异常: {e}")
