@@ -127,7 +127,8 @@ class SkillRegistry:
                     logger.error(f"Skill step failed: {action} - {e}")
                     return {"success": False, "error": str(e), "skill": skill_id}
             else:
-                logger.warning(f"Action handler not found: {action}")
+                logger.error(f"Action handler not found: {action}")
+                return {"success": False, "error": f"Action handler not found: {action}", "skill": skill_id}
         
         return {
             "success": True,

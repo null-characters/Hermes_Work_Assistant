@@ -184,52 +184,66 @@ def create_erp_bill(
         save_result = client.save(form_id, json_data)
         
         # Check save result
-        if isinstance(save_result, dict):
-            result_data = save_result.get("Result", {})
-            response_status = result_data.get("ResponseStatus", {})
-            
-            if response_status.get("IsSuccess") == False:
-                errors = response_status.get("Errors", [])
-                error_msgs = [e.get("Message", "Unknown error") for e in errors]
-                audit.log_create(
-                    form_id=form_id,
-                    dry_run=False,
-                    user_id=user_id or None,
-                    session_id=session_id or None,
-                    success=False,
-                    error="; ".join(error_msgs),
-                )
-                return {
-                    "success": False,
-                    "error": "Save failed",
-                    "details": error_msgs,
-                    "form_id": form_id,
-                }
-            
-            # Get bill number from result
-            bill_no = result_data.get("Number") or json_data.get("FBillNo", "")
-            
-            # Step 2: Submit the bill (atomic operation)
-            submit_data = {"Numbers": [bill_no]} if bill_no else {}
-            if submit_data:
-                client.submit(form_id, submit_data)
-            
-            # 记录审计日志
+        if not isinstance(save_result, dict):
             audit.log_create(
                 form_id=form_id,
-                bill_no=bill_no,
                 dry_run=False,
                 user_id=user_id or None,
                 session_id=session_id or None,
+                success=False,
+                error=f"Invalid save result type: {type(save_result)}",
             )
-            
             return {
-                "success": True,
-                "message": "Bill created and submitted",
-                "bill_no": bill_no,
+                "success": False,
+                "error": f"Invalid save result: {save_result}",
                 "form_id": form_id,
-                "status": "submitted",
             }
+        
+        result_data = save_result.get("Result", {})
+        response_status = result_data.get("ResponseStatus", {})
+        
+        if response_status.get("IsSuccess") == False:
+            errors = response_status.get("Errors", [])
+            error_msgs = [e.get("Message", "Unknown error") for e in errors]
+            audit.log_create(
+                form_id=form_id,
+                dry_run=False,
+                user_id=user_id or None,
+                session_id=session_id or None,
+                success=False,
+                error="; ".join(error_msgs),
+            )
+            return {
+                "success": False,
+                "error": "Save failed",
+                "details": error_msgs,
+                "form_id": form_id,
+            }
+        
+        # Get bill number from result
+        bill_no = result_data.get("Number") or json_data.get("FBillNo", "")
+        
+        # Step 2: Submit the bill (atomic operation)
+        submit_data = {"Numbers": [bill_no]} if bill_no else {}
+        if submit_data:
+            client.submit(form_id, submit_data)
+        
+        # 记录审计日志
+        audit.log_create(
+            form_id=form_id,
+            bill_no=bill_no,
+            dry_run=False,
+            user_id=user_id or None,
+            session_id=session_id or None,
+        )
+        
+        return {
+            "success": True,
+            "message": "Bill created and submitted",
+            "bill_no": bill_no,
+            "form_id": form_id,
+            "status": "submitted",
+        }
         
     except Exception as e:
         logger.error(f"Create bill failed: {e}")

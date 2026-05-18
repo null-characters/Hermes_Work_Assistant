@@ -154,3 +154,18 @@ class TestSkillRegistry:
         
         assert result["success"] is False
         assert "not found" in result["error"]
+    
+    def test_execute_skill_missing_handler(self, temp_skills_dir):
+        """Test skill execution with missing action handler - should fail loudly"""
+        registry = SkillRegistry(temp_skills_dir)
+        
+        # Provide empty handlers - action will not be found
+        result = registry.execute(
+            "test_skill",
+            {"material_number": "M001"},
+            {}  # No handlers
+        )
+        
+        # Should fail loudly, not silently skip (规则 12)
+        assert result["success"] is False
+        assert "Action handler not found" in result["error"]

@@ -137,3 +137,26 @@ class TestCreateErpBill:
         assert call_args.kwargs["user_id"] == "user123"
         # success defaults to True, may not be in kwargs
         assert call_args.kwargs.get("success", True) is True
+    
+    @patch("kingdee_mcp_server.server.get_audit_logger")
+    @patch("kingdee_mcp_server.server.get_client")
+    def test_create_invalid_save_result(self, mock_get_client, mock_get_audit):
+        """Test handling of invalid save result type - should fail loudly (规则 12)."""
+        mock_client = MagicMock()
+        # Return non-dict result - should cause failure
+        mock_client.save.return_value = "invalid_result"
+        mock_get_client.return_value = mock_client
+        
+        mock_audit = MagicMock()
+        mock_get_audit.return_value = mock_audit
+        
+        from kingdee_mcp_server.server import create_erp_bill
+        
+        result = create_erp_bill(
+            form_id="SAL_ORDER",
+            json_data={"FBillNo": "SO2026001"},
+        )
+        
+        # Should fail loudly, not return None (规则 12: 大声失败)
+        assert result["success"] is False
+        assert "Invalid save result" in result["error"]
