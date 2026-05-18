@@ -197,3 +197,22 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # DingTalk Gateway - 钉钉群机器人网关
+  dingtalk-gateway:
+    build:
+      context: ./services/dingtalk-gateway
+      dockerfile: Dockerfile
+    container_name: hermes-dingtalk-gateway
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      - PORT=8002
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
