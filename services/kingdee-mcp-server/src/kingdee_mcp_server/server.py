@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from .kingdee_client import get_client, reset_client
 from .audit_logger import get_audit_logger
+from .cache import get_query_cache
 
 # Load environment variables
 load_dotenv()
@@ -50,6 +51,7 @@ def query_erp_data(
         Query results with data array and has_more flag
     """
     audit = get_audit_logger()
+    cache = get_query_cache()
     try:
         client = get_client()
         
@@ -59,6 +61,20 @@ def query_erp_data(
         
         # Enforce limit cap
         actual_limit = min(limit, 2000)
+        
+        # Check cache first
+        cached_result = cache.get(form_id, field_keys, filter_string, actual_limit)
+        if cached_result is not None:
+            logger.info(f"Cache hit for query: form_id={form_id}")
+            audit.log_query(
+                form_id=form_id,
+                filter_string=filter_string,
+                result_count=len(cached_result.get("data", [])),
+                user_id=user_id or None,
+                session_id=session_id or None,
+                cached=True,
+            )
+            return cached_result
         
         logger.info(f"Querying ERP: form_id={form_id}, limit={actual_limit}")
         
@@ -89,13 +105,18 @@ def query_erp_data(
             session_id=session_id or None,
         )
         
-        return {
+        result_dict = {
             "success": True,
             "form_id": form_id,
             "count": len(data),
             "has_more": len(result) >= actual_limit if isinstance(result, list) else False,
             "data": data,
         }
+        
+        # Cache the result
+        cache.set(form_id, field_keys, result_dict, filter_string, actual_limit)
+        
+        return result_dict
         
     except Exception as e:
         logger.error(f"Query failed: {e}")

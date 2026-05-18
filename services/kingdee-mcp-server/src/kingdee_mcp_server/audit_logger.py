@@ -104,6 +104,7 @@ class AuditLogger:
         result_count: int = 0,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        cached: bool = False,
     ) -> None:
         """记录查询操作"""
         self.log_operation(
@@ -114,6 +115,7 @@ class AuditLogger:
             parameters={
                 "form_id": form_id,
                 "filter_string": filter_string,
+                "cached": cached,
             },
             result={"count": result_count},
             success=True,

@@ -89,12 +89,20 @@ class TestQueryErpData:
         call_args = mock_client.execute_bill_query.call_args
         assert call_args.kwargs["limit"] == 2000
     
+    @patch("kingdee_mcp_server.server.get_audit_logger")
     @patch("kingdee_mcp_server.server.get_client")
-    def test_query_error_handling(self, mock_get_client):
+    def test_query_error_handling(self, mock_get_client, mock_get_audit):
         """Test query handles errors gracefully."""
+        # Reset cache to avoid interference from other tests
+        import kingdee_mcp_server.cache as cache_module
+        cache_module._query_cache = None
+        
         mock_client = MagicMock()
         mock_client.execute_bill_query.side_effect = Exception("Connection failed")
         mock_get_client.return_value = mock_client
+        
+        mock_audit = MagicMock()
+        mock_get_audit.return_value = mock_audit
         
         from kingdee_mcp_server.server import query_erp_data
         
@@ -106,8 +114,12 @@ class TestQueryErpData:
     @patch("kingdee_mcp_server.server.get_client")
     def test_query_has_more_flag(self, mock_get_client):
         """Test has_more flag when results reach limit."""
+        # Reset cache to avoid interference from other tests
+        import kingdee_mcp_server.cache as cache_module
+        cache_module._query_cache = None
+        
         mock_client = MagicMock()
-        # Return exactly limit results
+        # Return exactly limit results (100 rows with 3 fields each)
         mock_client.execute_bill_query.return_value = [
             ["M001", "Material A", 1001],
         ] * 100
@@ -123,6 +135,10 @@ class TestQueryErpData:
     @patch("kingdee_mcp_server.server.get_client")
     def test_query_audit_logging(self, mock_get_client, mock_get_audit):
         """Test that audit log is called for query operations."""
+        # Reset cache to avoid interference from other tests
+        import kingdee_mcp_server.cache as cache_module
+        cache_module._query_cache = None
+        
         mock_client = MagicMock()
         mock_client.execute_bill_query.return_value = [["M001", "Material A", 1001]]
         mock_get_client.return_value = mock_client
@@ -144,4 +160,4 @@ class TestQueryErpData:
         assert call_args.kwargs["form_id"] == "BD_MATERIAL"
         assert call_args.kwargs["user_id"] == "user123"
         assert call_args.kwargs["session_id"] == "session456"
-        assert call_args.kwargs["result_count"] == 1
+        assert call_args.kwargs["result_count"] == 1  # 1 row returned

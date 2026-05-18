@@ -1,0 +1,186 @@
+# ERP Operations Skills Template
+# 定义可复用的 ERP 操作技能模板
+
+skills:
+  # 查询物料库存
+  query_material_stock:
+    name: "查询物料库存"
+    description: "查询指定物料的库存数量和仓库位置"
+    trigger:
+      patterns:
+        - "查询.*库存"
+        - "物料.*数量"
+        - "库存.*查询"
+      entities:
+        - material_number  # 物料编码
+        - warehouse        # 仓库（可选）
+    
+    steps:
+      - action: "query_erp_data"
+        params:
+          form_id: "BD_MATERIAL"
+          field_keys: "FNumber,FName,FBaseUnitId.FName"
+          filter_string: "FNumber = '{material_number}'"
+      
+      - action: "query_erp_data"
+        params:
+          form_id: "STK_Inventory"
+          field_keys: "FMaterialId.FNumber,FMaterialId.FName,FAuxPropId.FF100002.FNumber,FBaseQty,FStockId.FNumber,FStockId.FName"
+          filter_string: "FMaterialId.FNumber = '{material_number}'"
+          limit: 100
+    
+    output_template: |
+      物料 {material_number} 库存信息：
+      {#each results}
+      - 仓库: {FStockId.FName}
+        数量: {FBaseQty} {FBaseUnitId.FName}
+      {/each}
+    
+    examples:
+      - input: "查询物料 M001 的库存"
+        output: "物料 M001 库存信息：\n- 仓库: 原材料仓\n  数量: 100 个"
+
+  # 创建销售订单
+  create_sales_order:
+    name: "创建销售订单"
+    description: "创建新的销售订单并提交审批"
+    trigger:
+      patterns:
+        - "创建.*销售订单"
+        - "新建.*订单"
+        - "录入.*销售单"
+      entities:
+        - customer_number   # 客户编码
+        - material_items    # 物料明细
+        - delivery_date     # 交货日期（可选）
+    
+    steps:
+      - action: "query_erp_data"
+        description: "验证客户信息"
+        params:
+          form_id: "BD_CUSTOMER"
+          field_keys: "FNumber,FName,FSALDEPTID.FNumber"
+          filter_string: "FNumber = '{customer_number}'"
+      
+      - action: "create_erp_bill"
+        description: "创建销售订单"
+        params:
+          form_id: "SAL_SaleOrder"
+          json_data:
+            FBillNo: "自动生成"
+            FSaleOrgId:
+              FNumber: "100"
+            FCustId:
+              FNumber: "{customer_number}"
+            FSaleDeptId:
+              FNumber: "{customer_dept}"
+            FDate: "{delivery_date}"
+            FSaleOrderEntry:
+              FMaterialId:
+                FNumber: "{material_number}"
+              FQty: "{quantity}"
+              FPrice: "{price}"
+          auto_submit: true
+    
+    validation:
+      - "customer_number 必须存在"
+      - "material_items 不能为空"
+      - "quantity 必须大于 0"
+    
+    output_template: |
+      销售订单创建成功！
+      订单号: {bill_no}
+      客户: {customer_name}
+      物料明细:
+      {#each material_items}
+      - {material_number}: {quantity} 个 @ ¥{price}
+      {/each}
+      状态: 已提交审批
+
+  # 查询客户信息
+  query_customer_info:
+    name: "查询客户信息"
+    description: "查询客户基本信息、信用额度、应收账款"
+    trigger:
+      patterns:
+        - "查询.*客户"
+        - "客户.*信息"
+        - "客户.*详情"
+      entities:
+        - customer_number  # 客户编码
+        - customer_name    # 客户名称（可选）
+    
+    steps:
+      - action: "query_erp_data"
+        params:
+          form_id: "BD_CUSTOMER"
+          field_keys: "FNumber,FName,FSALDEPTID.FName,FCustTypeId.FName,FCreateDate"
+          filter_string: "FNumber = '{customer_number}' or FName like '%{customer_name}%'"
+          limit: 10
+      
+      - action: "query_erp_data"
+        description: "查询应收账款"
+        params:
+          form_id: "AR_RECEIVEBILL"
+          field_keys: "FCONTACTUNITID.FNumber,FNOTSETTLEAMOUNTFOR"
+          filter_string: "FCONTACTUNITID.FNumber = '{customer_number}'"
+    
+    output_template: |
+      客户信息：
+      编码: {FNumber}
+      名称: {FName}
+      销售部门: {FSALDEPTID.FName}
+      客户类别: {FCustTypeId.FName}
+      创建日期: {FCreateDate}
+      
+      应收账款: ¥{total_receivable}
+
+# Skills 注册配置
+registry:
+  auto_discover: true
+  discovery_path: "./config/skills"
+  
+  # 调用机制
+  invocation:
+    # 通过 Agent 自然语言匹配
+    natural_language: true
+    # 通过显式调用
+    explicit_call: true
+    # 参数映射
+    param_mapping:
+      # 从对话上下文提取参数
+      from_context: true
+      # 从用户输入提取参数
+      from_user_input: true
+
+# Skills 学习机制
+learning:
+  # 自动学习配置
+  auto_learn: true
+  
+  # 学习触发条件
+  triggers:
+    - type: "operation_frequency"
+      threshold: 3  # 同一操作执行 3 次以上
+      action: "suggest_skill"
+    
+    - type: "user_feedback"
+      threshold: "positive"
+      action: "reinforce_skill"
+    
+    - type: "error_pattern"
+      threshold: 2
+      action: "update_skill"
+  
+  # 新 Skill 模板
+  new_skill_template: |
+    skills:
+      {skill_id}:
+        name: "{skill_name}"
+        description: "{description}"
+        trigger:
+          patterns: {patterns}
+          entities: {entities}
+        steps: {steps}
+        output_template: |
+          {output_template}

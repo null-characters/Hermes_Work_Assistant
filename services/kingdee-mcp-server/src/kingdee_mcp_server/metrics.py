@@ -1,7 +1,7 @@
 """Prometheus metrics for MCP Server"""
 
 import logging
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi import Response
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,27 @@ ERP_LATENCY = Histogram(
     buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
 )
 
+# Cache Metrics
+CACHE_HIT_COUNT = Counter(
+    "cache_hit_count",
+    "Total number of cache hits"
+)
+
+CACHE_MISS_COUNT = Counter(
+    "cache_miss_count",
+    "Total number of cache misses"
+)
+
+CACHE_SIZE = Gauge(
+    "cache_size",
+    "Current number of cached entries"
+)
+
+CACHE_HIT_RATE = Gauge(
+    "cache_hit_rate",
+    "Cache hit rate (0-1)"
+)
+
 
 def metrics_endpoint() -> Response:
     """Prometheus metrics endpoint"""
@@ -56,3 +77,19 @@ def record_create(form_id: str, success: bool) -> None:
 def record_error(operation: str, error_type: str) -> None:
     """Record error"""
     ERP_ERROR_COUNT.labels(operation=operation, error_type=error_type).inc()
+
+
+def record_cache_hit() -> None:
+    """Record cache hit"""
+    CACHE_HIT_COUNT.inc()
+
+
+def record_cache_miss() -> None:
+    """Record cache miss"""
+    CACHE_MISS_COUNT.inc()
+
+
+def update_cache_metrics(stats: dict) -> None:
+    """Update cache metrics from stats"""
+    CACHE_SIZE.set(stats.get("size", 0))
+    CACHE_HIT_RATE.set(stats.get("hit_rate", 0))
