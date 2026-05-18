@@ -313,9 +313,37 @@ def upload_erp_attachment(
 
 
 def main():
-    """Run the MCP Server."""
-    logger.info("Starting Kingdee MCP Server...")
-    mcp.run(transport="stdio")
+    """Run the MCP Server.
+
+    支持两种传输方式：
+    - stdio: 本地进程通信（默认）
+    - sse: HTTP/SSE 传输，用于远程连接
+
+    通过环境变量 TRANSPORT 或命令行参数指定：
+    - TRANSPORT=stdio python -m kingdee_mcp_server.server
+    - TRANSPORT=sse python -m kingdee_mcp_server.server
+    """
+    import sys
+    import uvicorn
+
+    transport = os.getenv("TRANSPORT", "stdio").lower()
+
+    # 命令行参数优先
+    if len(sys.argv) > 1 and sys.argv[1] in ("stdio", "sse"):
+        transport = sys.argv[1]
+
+    if transport == "sse":
+        # SSE 传输模式，监听 HTTP 端口
+        port = int(os.getenv("PORT", "8080"))
+        host = os.getenv("HOST", "0.0.0.0")
+        logger.info(f"Starting Kingdee MCP Server (SSE) on {host}:{port}...")
+        
+        # 使用 uvicorn 直接运行 SSE app
+        uvicorn.run(mcp.sse_app(), host=host, port=port)
+    else:
+        # stdio 传输模式（默认）
+        logger.info("Starting Kingdee MCP Server (stdio)...")
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

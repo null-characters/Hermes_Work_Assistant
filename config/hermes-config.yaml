@@ -43,3 +43,12 @@ display:
   personality: "kawaii"
   reasoning: "off"
   bell: "off"
+
+# =============================================================================
+# MCP Servers
+# =============================================================================
+mcp_servers:
+  kingdee-erp:
+    command: /opt/mcp_servers/kingdee-erp/run.sh
+    enabled: true
+    description: "金蝶云星空 ERP MCP Server - 提供查询、建单、附件上传功能"

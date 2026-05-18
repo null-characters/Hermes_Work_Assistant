@@ -7,8 +7,19 @@ from typing import Optional
 from dataclasses import dataclass
 
 # Add kingdee_webapi_sdk to path
+# Priority: ENV variable > project lib > default path
 import sys
-sys.path.insert(0, os.path.expanduser("~/git_prj/kingdee_webapi_sdk"))
+
+_sdk_paths = [
+    os.getenv("KINGDEE_SDK_PATH"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "lib"),
+    os.path.expanduser("~/git_prj/kingdee_webapi_sdk"),
+]
+
+for _sdk_path in _sdk_paths:
+    if _sdk_path and os.path.exists(_sdk_path):
+        sys.path.insert(0, _sdk_path)
+        break
 
 from kingdee_sdk.client import KingdeeClient
 from kingdee_sdk.auth import AuthType
@@ -45,7 +56,12 @@ def get_pool_config() -> ConnectionPoolConfig:
 
 
 def get_client() -> KingdeeClient:
-    """Get or create Kingdee client instance with connection pool."""
+    """Get or create Kingdee client instance with connection pool.
+    
+    支持两种认证方式：
+    1. 用户名密码认证：KINGDEE_USERNAME + KINGDEE_PASSWORD
+    2. 应用签名认证：KINGDEE_APP_ID + KINGDEE_APP_SECRET
+    """
     global _client, _last_health_check
     
     if _client is None:
@@ -55,25 +71,49 @@ def get_client() -> KingdeeClient:
         server_url = os.getenv("KINGDEE_API_URL")
         acct_id = os.getenv("KINGDEE_ACCOUNT_ID")
         username = os.getenv("KINGDEE_USERNAME", "administrator")
+        password = os.getenv("KINGDEE_PASSWORD")
         app_id = os.getenv("KINGDEE_APP_ID")
         app_secret = os.getenv("KINGDEE_APP_SECRET")
+        lcid = int(os.getenv("KINGDEE_LCID", "2052"))
         
-        if not all([server_url, acct_id, app_id, app_secret]):
+        if not server_url or not acct_id:
             raise ValueError(
                 "Missing Kingdee configuration. "
-                "Please set KINGDEE_API_URL, KINGDEE_ACCOUNT_ID, "
-                "KINGDEE_APP_ID, and KINGDEE_APP_SECRET in .env"
+                "Please set KINGDEE_API_URL and KINGDEE_ACCOUNT_ID in .env"
             )
         
-        _client = KingdeeClient(
-            server_url=server_url,
-            acct_id=acct_id,
-            username=username,
-            app_id=app_id,
-            app_secret=app_secret,
-            auth_type=AuthType.SIGN_SHA256,
-            auto_login=True,
-        )
+        # 选择认证方式
+        if password:
+            # 用户名密码认证
+            _client = KingdeeClient(
+                server_url=server_url,
+                acct_id=acct_id,
+                username=username,
+                password=password,
+                lcid=lcid,
+                auth_type=AuthType.PASSWORD,
+                auto_login=True,
+            )
+            logger.info("Kingdee client initialized with password auth")
+        elif app_id and app_secret:
+            # 应用签名认证
+            _client = KingdeeClient(
+                server_url=server_url,
+                acct_id=acct_id,
+                username=username,
+                app_id=app_id,
+                app_secret=app_secret,
+                auth_type=AuthType.SIGN_SHA256,
+                auto_login=True,
+            )
+            logger.info("Kingdee client initialized with app signature auth")
+        else:
+            raise ValueError(
+                "Missing authentication credentials. "
+                "Please set either KINGDEE_USERNAME+KINGDEE_PASSWORD "
+                "or KINGDEE_APP_ID+KINGDEE_APP_SECRET in .env"
+            )
+        
         _last_health_check = time.time()
         logger.info(f"Kingdee client initialized with pool config: {config}")
     

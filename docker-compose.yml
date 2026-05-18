@@ -155,21 +155,23 @@ services:
   # Kingdee MCP Server - ERP 集成 (Phase 4)
   kingdee-mcp-server:
     build:
-      context: ./services/kingdee-mcp-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/kingdee-mcp-server/Dockerfile
     container_name: hermes-mcp-server
     ports:
       - "8080:8080"
     volumes:
       - ./data:/app/data
-      - ./config/mcp_servers.yaml:/app/config/mcp_servers.yaml:ro
     env_file:
       - .env
     environment:
       - AUDIT_LOG_DIR=/app/data/audit
+      - TRANSPORT=sse
+      - PORT=8080
+      - KINGDEE_SDK_PATH=/app/lib
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/sse"]
       interval: 30s
       timeout: 10s
       retries: 3
