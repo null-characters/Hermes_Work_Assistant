@@ -1,0 +1,51 @@
+# MCP Servers Configuration
+# 此文件定义 Hermes Agent 可连接的 MCP Server 列表
+# 参考: https://modelcontextprotocol.io/docs/concepts/architecture
+
+# =============================================================================
+# Kingdee ERP MCP Server
+# =============================================================================
+kingdee-erp:
+  # 传输方式: stdio (本地进程通信)
+  transport: stdio
+  
+  # Server 启动命令
+  command: python
+  args:
+    - "-m"
+    - "kingdee_mcp_server.server"
+  
+  # 工作目录（可选，默认使用 services/kingdee-mcp-server）
+  cwd: /app/services/kingdee-mcp-server
+  
+  # 环境变量（从 .env 加载）
+  env:
+    KINGDEE_API_URL: ${KINGDEE_API_URL}
+    KINGDEE_ACCOUNT_ID: ${KINGDEE_ACCOUNT_ID}
+    KINGDEE_APP_ID: ${KINGDEE_APP_ID}
+    KINGDEE_APP_SECRET: ${KINGDEE_APP_SECRET}
+    KINGDEE_USERNAME: ${KINGDEE_USERNAME:-administrator}
+  
+  # 超时配置（秒）
+  timeout: 60
+  
+  # 重试策略
+  retry:
+    max_attempts: 3
+    backoff_factor: 1.5
+  
+  # 启用状态
+  enabled: true
+  
+  # 描述
+  description: "金蝶云星空 ERP MCP Server - 提供查询、建单、附件上传功能"
+
+# =============================================================================
+# 未来扩展: 其他 MCP Server
+# =============================================================================
+# example-server:
+#   transport: streamable-http
+#   url: http://localhost:8080/mcp
+#   headers:
+#     Authorization: Bearer ${EXAMPLE_API_KEY}
+#   enabled: false

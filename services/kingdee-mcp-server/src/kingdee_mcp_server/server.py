@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
 from .kingdee_client import get_client, reset_client
+from .audit_logger import get_audit_logger
 
 # Load environment variables
 load_dotenv()
@@ -33,6 +34,8 @@ def query_erp_data(
     filter_string: str = "",
     field_keys: str = "",
     limit: int = 100,
+    user_id: str = "",
+    session_id: str = "",
 ) -> dict:
     """Query data from Kingdee ERP.
 
@@ -45,10 +48,13 @@ def query_erp_data(
         filter_string: Filter condition (e.g., "FNumber like '%M001%'")
         field_keys: Comma-separated fields (e.g., "FNumber,FName,FId")
         limit: Max records (default 100, max 2000)
+        user_id: User ID for audit logging
+        session_id: Session ID for audit logging
 
     Returns:
         Query results with data array and has_more flag
     """
+    audit = get_audit_logger()
     try:
         client = get_client()
         
@@ -79,6 +85,15 @@ def query_erp_data(
                 if isinstance(row, list) and len(row) == len(fields):
                     data.append(dict(zip(fields, row)))
         
+        # 记录审计日志
+        audit.log_query(
+            form_id=form_id,
+            filter_string=filter_string,
+            result_count=len(data),
+            user_id=user_id or None,
+            session_id=session_id or None,
+        )
+        
         return {
             "success": True,
             "form_id": form_id,
@@ -89,6 +104,13 @@ def query_erp_data(
         
     except Exception as e:
         logger.error(f"Query failed: {e}")
+        audit.log_operation(
+            operation="query",
+            tool_name="query_erp_data",
+            parameters={"form_id": form_id},
+            success=False,
+            error=str(e),
+        )
         return {
             "success": False,
             "error": str(e),
@@ -101,6 +123,8 @@ def create_erp_bill(
     form_id: str,
     json_data: dict,
     dry_run: bool = False,
+    user_id: str = "",
+    session_id: str = "",
 ) -> dict:
     """Create and submit a bill in Kingdee ERP.
 
@@ -113,10 +137,13 @@ def create_erp_bill(
         form_id: Form identifier (e.g., SAL_ORDER, PUR_ORDER)
         json_data: Bill data matching Kingdee API format
         dry_run: If True, validate only without creating
+        user_id: User ID for audit logging
+        session_id: Session ID for audit logging
 
     Returns:
         Creation result with bill_no and status
     """
+    audit = get_audit_logger()
     try:
         client = get_client()
         
@@ -124,6 +151,12 @@ def create_erp_bill(
         
         if dry_run:
             # Validate by attempting draft (no actual save)
+            audit.log_create(
+                form_id=form_id,
+                dry_run=True,
+                user_id=user_id or None,
+                session_id=session_id or None,
+            )
             return {
                 "success": True,
                 "message": "Dry run validation passed",
@@ -142,6 +175,14 @@ def create_erp_bill(
             if response_status.get("IsSuccess") == False:
                 errors = response_status.get("Errors", [])
                 error_msgs = [e.get("Message", "Unknown error") for e in errors]
+                audit.log_create(
+                    form_id=form_id,
+                    dry_run=False,
+                    user_id=user_id or None,
+                    session_id=session_id or None,
+                    success=False,
+                    error="; ".join(error_msgs),
+                )
                 return {
                     "success": False,
                     "error": "Save failed",
@@ -156,6 +197,15 @@ def create_erp_bill(
             submit_data = {"Numbers": [bill_no]} if bill_no else {}
             if submit_data:
                 client.submit(form_id, submit_data)
+            
+            # 记录审计日志
+            audit.log_create(
+                form_id=form_id,
+                bill_no=bill_no,
+                dry_run=False,
+                user_id=user_id or None,
+                session_id=session_id or None,
+            )
             
             return {
                 "success": True,
@@ -173,6 +223,14 @@ def create_erp_bill(
         
     except Exception as e:
         logger.error(f"Create bill failed: {e}")
+        audit.log_create(
+            form_id=form_id,
+            dry_run=dry_run,
+            user_id=user_id or None,
+            session_id=session_id or None,
+            success=False,
+            error=str(e),
+        )
         return {
             "success": False,
             "error": str(e),
