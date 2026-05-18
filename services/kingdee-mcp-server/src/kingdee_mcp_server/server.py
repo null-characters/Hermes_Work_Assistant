@@ -1,9 +1,7 @@
 """MCP Server entry point for Kingdee ERP integration."""
 
-import json
 import logging
 import os
-from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -211,12 +209,6 @@ def create_erp_bill(
                 "form_id": form_id,
                 "status": "submitted",
             }
-        
-        return {
-            "success": True,
-            "message": "Bill created",
-            "form_id": form_id,
-        }
         
     except Exception as e:
         logger.error(f"Create bill failed: {e}")

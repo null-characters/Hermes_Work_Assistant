@@ -1,7 +1,7 @@
 """Tests for create_erp_bill tool."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 
 class TestCreateErpBill:
@@ -102,3 +102,38 @@ class TestCreateErpBill:
         
         assert result["success"] is False
         assert "Network error" in result["error"]
+    
+    @patch("kingdee_mcp_server.server.get_audit_logger")
+    @patch("kingdee_mcp_server.server.get_client")
+    def test_create_audit_logging(self, mock_get_client, mock_get_audit):
+        """Test that audit log is called for create operations."""
+        mock_client = MagicMock()
+        mock_client.save.return_value = {
+            "Result": {
+                "Number": "SO2026001",
+                "ResponseStatus": {"IsSuccess": True}
+            }
+        }
+        mock_client.submit.return_value = {}
+        mock_get_client.return_value = mock_client
+        
+        mock_audit = MagicMock()
+        mock_get_audit.return_value = mock_audit
+        
+        from kingdee_mcp_server.server import create_erp_bill
+        
+        result = create_erp_bill(
+            form_id="SAL_ORDER",
+            json_data={"FBillNo": "SO2026001"},
+            user_id="user123",
+            session_id="session456",
+        )
+        
+        # Verify audit log was called
+        mock_audit.log_create.assert_called()
+        call_args = mock_audit.log_create.call_args
+        assert call_args.kwargs["form_id"] == "SAL_ORDER"
+        assert call_args.kwargs["bill_no"] == "SO2026001"
+        assert call_args.kwargs["user_id"] == "user123"
+        # success defaults to True, may not be in kwargs
+        assert call_args.kwargs.get("success", True) is True

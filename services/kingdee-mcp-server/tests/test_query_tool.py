@@ -1,7 +1,7 @@
 """Tests for query_erp_data tool."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 
 class TestQueryErpData:
@@ -118,3 +118,30 @@ class TestQueryErpData:
         result = query_erp_data(form_id="BD_MATERIAL", limit=100)
         
         assert result["has_more"] is True
+    
+    @patch("kingdee_mcp_server.server.get_audit_logger")
+    @patch("kingdee_mcp_server.server.get_client")
+    def test_query_audit_logging(self, mock_get_client, mock_get_audit):
+        """Test that audit log is called for query operations."""
+        mock_client = MagicMock()
+        mock_client.execute_bill_query.return_value = [["M001", "Material A", 1001]]
+        mock_get_client.return_value = mock_client
+        
+        mock_audit = MagicMock()
+        mock_get_audit.return_value = mock_audit
+        
+        from kingdee_mcp_server.server import query_erp_data
+        
+        result = query_erp_data(
+            form_id="BD_MATERIAL",
+            user_id="user123",
+            session_id="session456",
+        )
+        
+        # Verify audit log was called with correct parameters
+        mock_audit.log_query.assert_called_once()
+        call_args = mock_audit.log_query.call_args
+        assert call_args.kwargs["form_id"] == "BD_MATERIAL"
+        assert call_args.kwargs["user_id"] == "user123"
+        assert call_args.kwargs["session_id"] == "session456"
+        assert call_args.kwargs["result_count"] == 1
