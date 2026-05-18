@@ -2,6 +2,23 @@
 
 > 基于 Hermes Agent 的企业级智能助手
 
+---
+
+> ⚠️ **项目已废弃 - 仅供代码学习参考**
+>
+> **状态**: 🏁 已停止维护
+>
+> **废弃原因**: 市场上已有更成熟、功能更强大的替代方案：
+> - [腾讯 WorkBuddy](https://www.codebuddy.ai/) - 企业级 AI 编程助手，支持多平台集成
+> - [Claude Code](https://www.anthropic.com/claude/code) - Anthropic 官方 CLI 编程代理
+> - [OpenAI Codex](https://github.com/openai/codex) - OpenAI 代码生成与执行平台
+>
+> 这些产品在企业集成、自然语言交互、文件处理等方面都有更完善的实现，继续维护本项目已无实际意义。
+>
+> 本仓库仅作为代码学习和技术探索的参考保留，不再接受 Issue 和 PR。
+
+---
+
 ## 项目简介
 
 利用 Hermes Agent 的自主代理能力，为企业提供智能化工作助手。支持两种使用场景：
