@@ -178,6 +178,11 @@ def get_audit_logger() -> AuditLogger:
     """获取全局审计日志实例"""
     global _audit_logger
     if _audit_logger is None:
-        log_dir = os.getenv("AUDIT_LOG_DIR", "/app/data/audit")
+        # 优先使用环境变量，其次使用本地 data 目录
+        log_dir = os.getenv("AUDIT_LOG_DIR")
+        if log_dir is None:
+            # 本地开发：使用项目根目录下的 data/audit
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            log_dir = str(project_root / "data" / "audit")
         _audit_logger = AuditLogger(log_dir=log_dir)
     return _audit_logger

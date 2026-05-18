@@ -48,7 +48,7 @@ class TestQueryErpData:
         """Test query with filter condition."""
         mock_client = MagicMock()
         mock_client.execute_bill_query.return_value = [
-            ["M001", "Material A", 1001],
+            ["M001", "Material A"],  # 2 fields matching field_keys
         ]
         mock_get_client.return_value = mock_client
         

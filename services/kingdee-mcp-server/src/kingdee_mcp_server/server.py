@@ -22,10 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create MCP Server instance
-mcp = FastMCP(
-    name="Kingdee ERP MCP Server",
-    version="0.1.0",
-)
+mcp = FastMCP("Kingdee ERP MCP Server")
 
 
 @mcp.tool()
