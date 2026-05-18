@@ -158,11 +158,10 @@ async def call_hermes_agent(message: str, user_id: str = "dingtalk_user") -> str
     async with httpx.AsyncClient(timeout=120.0) as client:
         # 调用 Hermes Bridge API
         response = await client.post(
-            f"{HERMES_AGENT_URL}/api/task",
+            f"{HERMES_AGENT_URL}/api/submit",
             json={
-                "task": message,
-                "session_id": f"dingtalk_{user_id}",
-                "stream": False
+                "message": message,
+                "user_id": user_id
             }
         )
         
